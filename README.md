@@ -44,8 +44,8 @@ Role Variables
 Example
 -------
 
+```
 ---
-
 - hosts: localhost
   connection: local
   become: true
@@ -55,7 +55,7 @@ Example
       vars:
         app: example_approle
         namespace: parent_ns/child_ns
-
+```
 
 License
 -------
