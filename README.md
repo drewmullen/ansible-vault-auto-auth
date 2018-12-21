@@ -41,6 +41,22 @@ Role Variables
 
 - Default: undefined
 
+Example
+-------
+
+---
+
+- hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - import_role:
+        name: vault-auto-auth
+      vars:
+        app: example_approle
+        namespace: parent_ns/child_ns
+
+
 License
 -------
 
