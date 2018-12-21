@@ -1,0 +1,36 @@
+### BEGIN INIT INFO
+# Provides:          vault
+# Required-Start:    $local_fs $remote_fs
+# Required-Stop:     $local_fs $remote_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Vault agent
+# Description:       Vault secret management tool
+### END INIT INFO
+
+[Unit]
+Description="HashiCorp Vault Agent- A vault authentication tool"
+Documentation=https://www.vaultproject.io/docs/
+Requires=network-online.target
+After=network-online.target
+ConditionFileNotEmpty={{ vault_config_path }}/agent.hcl
+StartLimitInterval=60
+
+[Service]
+User={{ vault_user }}
+Group={{ vault_group }}
+Environment="VAULT_ADDR={{ vault_url }}"
+
+ExecStart={{ vault_bin_path }}/vault agent -config={{ vault_config_path }}/agent.hcl {% if vault_log_level is defined %}-log-level={{ vault_log_level | lower }}
+{% endif %}
+ExecReload=/bin/kill --signal HUP $MAINPID
+KillMode=process
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target

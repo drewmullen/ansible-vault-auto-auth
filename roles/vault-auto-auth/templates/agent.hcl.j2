@@ -1,0 +1,16 @@
+auto_auth {
+        method "approle" {
+		mount_path = "{{ namespace }}/auth/approle"
+                config = {
+			role_id_file_path = "{{ role_id_dir }}/role_id.txt"
+			secret_id_file_path = "{{ secret_id_dir }}/secret_id.txt"
+			remove_secret_id_file_after_reading = {{ agent_remove_secret | bool | lower }}
+                }
+        }
+
+        sink "file" {
+                config = {
+                        path = "{{ token_dir }}/.vault_token"
+                }
+        }
+}

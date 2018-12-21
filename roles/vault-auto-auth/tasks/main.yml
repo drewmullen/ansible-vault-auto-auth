@@ -1,0 +1,132 @@
+---
+# tasks file for vault-auto-auth
+
+- name: verify app has been defined
+  assert:
+    that: app is defined
+
+- name: "Add Vault user"
+  user:
+    name: "{{ vault_user }}"
+    comment: "Vault user"
+    group: "{{ vault_group }}"
+    system: true
+
+- name: Check Vault installation
+  command: which vault
+  register: vault_installation
+  changed_when: false
+  ignore_errors: true
+  check_mode: false
+
+- name: Get installed Vault version
+  shell: "{{ vault_installation.stdout }} -version | cut -d' ' -f2 | tr -d 'v'"
+  when: not vault_installation is failed
+  changed_when: false
+  check_mode: false
+  register: installed_vault_version
+
+- name: Compute if installation is required
+  set_fact:
+    installation_required: "{{ vault_installation is failed or installed_vault_version.stdout != vault_version }}"
+
+# - name: Install Vault
+#   include: install.yml
+#   when:
+#     - installation_required | bool
+#     - not vault_install_from_control | bool
+
+- name: Install Vault via control host
+  include: install_from_control.yml
+  when:
+    - installation_required | bool
+    - vault_install_from_control | bool
+
+- name: extract systemd version
+  shell: systemctl --version systemd | head -n 1 | cut -d' ' -f2
+  changed_when: false
+  check_mode: false
+  register: systemd_version
+
+- name: Create systemd unit file for vault agent
+  template:
+    src: vault_auto_auth.service.j2
+    dest: /lib/systemd/system/vault_auto_auth.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Write config template
+  template:
+    src: agent.hcl.j2
+    dest: "{{ vault_config_path }}/agent.hcl"
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: 0400
+
+- name: Get role-id for "{{ app }}"
+  uri:
+    url: "{{ vault_url }}/v1/auth/approle/role/{{ app }}/role-id"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+      X-Vault-Namespace: "{{ namespace }}"
+    validate_certs: false
+    status_code: 200
+  register: role_id
+  changed_when: false
+  no_log: true
+
+- name: Create empty files for approle ids
+  file:
+    state: touch
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: 0400
+    dest: "{{ item }}"
+    modification_time: preserve
+    access_time: preserve
+  loop:
+    - "{{ role_id_dir }}/role_id.txt"
+    - "{{ secret_id_dir }}/secret_id.txt"
+
+- name: Generate secret-id for "{{ app }}"
+  uri:
+    url: "{{ vault_url }}/v1/auth/approle/role/{{ app }}/secret-id"
+    method: POST
+    headers:
+      X-Vault-Token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+      X-Vault-Namespace: "{{ namespace }}"
+    validate_certs: false
+    status_code: 200
+  register: secret_id
+  changed_when: false
+  no_log: true
+
+- name: Write role ids to local filesystem
+  lineinfile:
+    path: '{{ role_id_dir }}/role_id.txt'
+    regexp: '^.*'
+    line: '{{ role_id.json.data.role_id }}'
+  no_log: true
+
+- name: Write secret ids to local filesystem
+  lineinfile:
+    path: '{{ secret_id_dir }}/secret_id.txt'
+    regexp: '^.*'
+    line: '{{ secret_id.json.data.secret_id }}'
+  no_log: true
+
+- name: Start Auto Auth Agent
+  service:
+    state: started
+    name: vault_auto_auth
+  when: vault_agent_start
+
+    # check to determine if i should place secret id
+    # check remaining ttl on token: curl -k -H "X-Vault-Token: s.blergh" -d '{"token": "s.blergh"}' https://vault.is.payxdev.com/v1/auth/token/lookup
+    # OR curl -k -H "X-Vault-Token: s.2gfko41EeEAg27tW3r3SORqk" https://vault.is.payxdev.com/v1/auth/token/lookup-self
+
+    # TEST IF DELETING (or moving) THE TOKEN AUTO GENERATES A NEW ONE
+
+    # place secret id
